@@ -4,7 +4,7 @@
   "description": "RoaringBitmap vs Int32Array vs Set benchmark visualization",
   "main": "benchmark.js",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=25.0.0"
   },
   "scripts": {
     "benchmark": "node --expose-gc benchmark.js",
