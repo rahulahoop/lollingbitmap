@@ -2,7 +2,12 @@
 
 const RoaringBitmap32 = require('roaring/RoaringBitmap32');
 const fs = require('fs');
+const path = require('path');
 const { performance } = require('perf_hooks');
+
+const CHARTJS = fs.readFileSync(
+  path.join(__dirname, 'node_modules/chart.js/dist/chart.umd.min.js'), 'utf8'
+);
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -245,7 +250,7 @@ function buildHtml(results) {
 <head>
 <meta charset="utf-8">
 <title>RoaringBitmap Benchmark</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>${CHARTJS}</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; }
