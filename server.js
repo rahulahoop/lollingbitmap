@@ -7,13 +7,20 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const RESULTS = path.join(__dirname, 'results.html');
+const INTERVAL_MS = parseInt(process.env.BENCHMARK_INTERVAL_MS || '3600000', 10); // default 1 hour
 
 function runBenchmark(cb) {
+    console.log(`[${new Date().toISOString()}] Running benchmark...`);
     const child = spawn(process.execPath, ['--expose-gc', 'benchmark.js'], {
         cwd: __dirname,
         stdio: 'inherit',
     });
-    child.on('close', cb);
+    child.on('close', (code) => {
+        if (code !== 0) console.error(`Benchmark exited with code ${code}`);
+        else console.log(`[${new Date().toISOString()}] Benchmark complete.`);
+        if (cb) cb(code);
+    });
 }
 
 // Healthcheck
@@ -21,42 +28,28 @@ app.get('/up', (req, res) => {
     res.status(200).send('OK');
 });
 
-// Serve results.html
+// Serve results
 app.get('/', (req, res) => {
-    const resultsPath = path.join(__dirname, 'results.html');
-    if (!fs.existsSync(resultsPath)) {
-        return res.status(503).send('Benchmark has not run yet. Visit <a href="/run">/run</a> to start it.');
+    if (!fs.existsSync(RESULTS)) {
+        return res.status(503).send('Benchmark has not run yet — check back shortly.');
     }
-    res.sendFile(resultsPath);
-});
-
-// Re-run benchmark and refresh results.html
-app.get('/run', (req, res) => {
-    console.log('Running benchmark...');
-    runBenchmark((code) => {
-        if (code !== 0) {
-            return res.status(500).send(`Benchmark exited with code ${code}`);
-        }
-        res.sendFile(path.join(__dirname, 'results.html'));
-    });
+    res.sendFile(RESULTS);
 });
 
 function startServer() {
     app.listen(PORT, () => {
         console.log(`lollingbitmap running at http://localhost:${PORT}`);
     });
+    // Re-run on a schedule
+    setInterval(() => runBenchmark(), INTERVAL_MS);
 }
 
-// Run benchmark on startup only if results.html doesn't already exist
-if (fs.existsSync(path.join(__dirname, 'results.html'))) {
+// Run on startup if results don't exist yet, then start the server
+if (fs.existsSync(RESULTS)) {
     startServer();
 } else {
-    console.log('Running benchmark on startup...');
     runBenchmark((code) => {
-        if (code !== 0) {
-            console.error(`Startup benchmark exited with code ${code}`);
-            process.exit(1);
-        }
+        if (code !== 0) process.exit(1);
         startServer();
     });
 }
