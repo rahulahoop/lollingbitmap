@@ -1,14 +1,13 @@
 'use strict';
 
-const express = require('express');
+const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const app = express();
 const PORT = process.env.PORT || 3000;
 const RESULTS = path.join(__dirname, 'results.html');
-const INTERVAL_MS = parseInt(process.env.BENCHMARK_INTERVAL_MS || '3600000', 10); // default 1 hour
+const INTERVAL_MS = parseInt(process.env.BENCHMARK_INTERVAL_MS || '3600000', 10);
 
 function runBenchmark(cb) {
     console.log(`[${new Date().toISOString()}] Running benchmark...`);
@@ -23,28 +22,34 @@ function runBenchmark(cb) {
     });
 }
 
-// Healthcheck
-app.get('/up', (req, res) => {
-    res.status(200).send('OK');
-});
-
-// Serve results
-app.get('/', (req, res) => {
-    if (!fs.existsSync(RESULTS)) {
-        return res.status(503).send('Benchmark has not run yet — check back shortly.');
+const server = http.createServer((req, res) => {
+    if (req.url === '/up') {
+        res.writeHead(200);
+        res.end('OK');
+        return;
     }
-    res.sendFile(RESULTS);
+    if (req.url === '/') {
+        if (!fs.existsSync(RESULTS)) {
+            res.writeHead(503);
+            res.end('Benchmark has not run yet — check back shortly.');
+            return;
+        }
+        const html = fs.readFileSync(RESULTS);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(html);
+        return;
+    }
+    res.writeHead(404);
+    res.end('Not found');
 });
 
 function startServer() {
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
         console.log(`lollingbitmap running at http://localhost:${PORT}`);
     });
-    // Re-run on a schedule
     setInterval(() => runBenchmark(), INTERVAL_MS);
 }
 
-// Run on startup if results don't exist yet, then start the server
 if (fs.existsSync(RESULTS)) {
     startServer();
 } else {
