@@ -3,6 +3,7 @@ FROM node:25-alpine AS builder
 
 WORKDIR /app
 
+RUN npm install -g npm@11
 COPY package*.json ./
 RUN npm ci
 
@@ -14,6 +15,7 @@ FROM node:25-alpine
 
 WORKDIR /app
 
+RUN npm install -g npm@11
 # Production deps only
 COPY package*.json ./
 RUN npm ci --omit=dev
