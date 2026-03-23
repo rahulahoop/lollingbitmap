@@ -1,6 +1,7 @@
 'use strict';
 
 const http = require('http');
+const zlib = require('zlib');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -35,8 +36,21 @@ const server = http.createServer((req, res) => {
             return;
         }
         const html = fs.readFileSync(RESULTS);
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(html);
+        const acceptsGzip = (req.headers['accept-encoding'] || '').includes('gzip');
+        if (acceptsGzip) {
+            zlib.gzip(html, (err, compressed) => {
+                if (err) {
+                    res.writeHead(200, { 'Content-Type': 'text/html' });
+                    res.end(html);
+                } else {
+                    res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip' });
+                    res.end(compressed);
+                }
+            });
+        } else {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(html);
+        }
         return;
     }
     res.writeHead(404);
