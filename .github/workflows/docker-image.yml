@@ -1,0 +1,72 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Log in to GHCR
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=sha
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build image (no push yet)
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: false
+        load: true
+        tags: lollingbitmap:ci-test
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Smoke test container
+      run: |
+        docker run -d --name ci-test -p 3000:3000 lollingbitmap:ci-test
+        echo "Waiting for healthcheck..."
+        for i in $(seq 1 15); do
+          STATUS=$(docker inspect --format='{{.State.Health.Status}}' ci-test 2>/dev/null || echo "starting")
+          echo "  attempt $i: $STATUS"
+          [ "$STATUS" = "healthy" ] && break
+          [ $i -eq 15 ] && echo "Container never became healthy" && docker logs ci-test && exit 1
+          sleep 2
+        done
+        curl -sf http://localhost:3000/up | grep -q "OK" || (docker logs ci-test && exit 1)
+        echo "Smoke test passed"
+        docker rm -f ci-test
+
+    - name: Push image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}

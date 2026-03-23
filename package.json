@@ -1,0 +1,17 @@
+{
+  "name": "lollingbitmap",
+  "version": "1.0.0",
+  "description": "RoaringBitmap vs Int32Array vs Set benchmark visualization",
+  "main": "benchmark.js",
+  "engines": {
+    "node": ">=25.0.0"
+  },
+  "scripts": {
+    "benchmark": "node --expose-gc benchmark.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.0.0",
+    "roaring": "^2.7.0"
+  }
+}
