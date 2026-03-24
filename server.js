@@ -28,11 +28,8 @@ const server = http.createServer((req, res) => {
 
     if (req.url === '/') {
         const html = indexHtml();
-        res.writeHead(200, {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Content-Length': Buffer.byteLength(html, 'utf8'),
-        });
-        res.end(html, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
         return;
     }
 
@@ -44,12 +41,8 @@ const server = http.createServer((req, res) => {
             res.end(`/${name} not ready yet — check back shortly.`);
             return;
         }
-        const html = fs.readFileSync(filePath, 'utf8');
-        res.writeHead(200, {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Content-Length': Buffer.byteLength(html, 'utf8'),
-        });
-        res.end(html, 'utf8');
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        fs.createReadStream(filePath).pipe(res);
         return;
     }
 
