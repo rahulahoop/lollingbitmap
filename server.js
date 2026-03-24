@@ -7,7 +7,6 @@ const path = require('path');
 
 const PORT = process.env.PORT || 3000;
 const RESULTS = path.join(__dirname, 'results.html');
-const INTERVAL_MS = parseInt(process.env.BENCHMARK_INTERVAL_MS || '3600000', 10);
 
 function runBenchmark(cb) {
     console.log(`[${new Date().toISOString()}] Running benchmark...`);
@@ -34,27 +33,18 @@ const server = http.createServer((req, res) => {
             res.end('Benchmark has not run yet — check back shortly.');
             return;
         }
-        const html = fs.readFileSync(RESULTS);
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(html);
+        const html = fs.readFileSync(RESULTS, 'utf8');
+        res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Length': Buffer.byteLength(html, 'utf8'),
+        });
+        res.end(html, 'utf8');
         return;
     }
     res.writeHead(404);
     res.end('Not found');
 });
 
-function startServer() {
-    server.listen(PORT, () => {
-        console.log(`lollingbitmap running at http://localhost:${PORT}`);
-    });
-    setInterval(() => runBenchmark(), INTERVAL_MS);
-}
-
-if (fs.existsSync(RESULTS)) {
-    startServer();
-} else {
-    runBenchmark((code) => {
-        if (code !== 0) process.exit(1);
-        startServer();
-    });
-}
+server.listen(PORT, () => {
+    console.log(`lollingbitmap running at http://localhost:${PORT}`);
+});
