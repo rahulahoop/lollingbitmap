@@ -1,27 +1,26 @@
-# lollingbitmap
+# pages
 
-Benchmark visualization comparing [RoaringBitmap](https://github.com/SalvatorePreviti/roaring-node) vs `Int32Array` vs `Set` across dataset sizes and distributions.
+Static pages server. Routes are defined in `server.js` as a mapping from URL path to HTML file in `pages/`.
 
 Live at **[lolling.legume.dad](https://lolling.legume.dad)**
 
-## What it benchmarks
+| Route | File |
+|-------|------|
+| `/roaring` | `pages/roaring.html` — RoaringBitmap vs Int32Array vs Set benchmark |
+| `/woco` | `pages/woco.html` |
 
-**Operations:** build, contains, iteration, union, intersection, cardinality, memory usage
+## Adding a page
 
-**Sizes:** 1K, 10K, 100K, 1M, 2M elements
-
-**Distributions:**
-- **Dense** — consecutive integers (0, 1, 2, …) — best case for RoaringBitmap run-length encoding
-- **Sparse** — evenly spaced with large gaps (0, 100, 200, …) — array container territory
-- **Clustered** — bursts of 100 consecutive values with gaps — realistic mixed workload
+1. Drop an HTML file in `pages/`
+2. Add an entry to the `PAGES` map in `server.js`
 
 ## Running locally
 
 ```bash
-# Run the benchmark and open results.html
+# Generate roaring benchmark results
 node --expose-gc benchmark.js
 
-# Start the web server (runs benchmark on startup if needed, refreshes hourly)
+# Start the server
 node server.js
 ```
 
@@ -37,11 +36,9 @@ docker build .
 docker compose up
 ```
 
-The benchmark runs during the Docker build so the container starts instantly with pre-computed results. It re-runs hourly in the background to stay fresh.
-
 ## Deployment
 
-CI pushes to `ghcr.io/rahulahoop/lollingbitmap` on every push to `main`. Pull and restart on the server:
+CI pushes to `ghcr.io/rahulahoop/pages` on every push to `main`. Pull and restart on the server:
 
 ```bash
 docker compose pull && docker compose up -d

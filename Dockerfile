@@ -20,8 +20,8 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Pre-built results + server
-COPY --from=builder /app/results.html ./results.html
+# Pre-built pages + server
+COPY --from=builder /app/pages ./pages
 COPY benchmark.js ./
 COPY server.js ./
 

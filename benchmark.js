@@ -217,8 +217,9 @@ async function main() {
   }
 
   const html = buildHtml(results);
-  fs.writeFileSync('results.html', html, 'utf8');
-  console.log('\nWrote results.html — open it in your browser.');
+  fs.mkdirSync('pages', { recursive: true });
+  fs.writeFileSync('pages/roaring.html', html, 'utf8');
+  console.log('\nWrote pages/roaring.html — open it in your browser.');
 }
 
 // ---------------------------------------------------------------------------

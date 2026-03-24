@@ -1,24 +1,22 @@
 'use strict';
 
 const http = require('http');
-const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 3000;
-const RESULTS = path.join(__dirname, 'results.html');
 
-function runBenchmark(cb) {
-    console.log(`[${new Date().toISOString()}] Running benchmark...`);
-    const child = spawn(process.execPath, ['--expose-gc', 'benchmark.js'], {
-        cwd: __dirname,
-        stdio: 'inherit',
-    });
-    child.on('close', (code) => {
-        if (code !== 0) console.error(`Benchmark exited with code ${code}`);
-        else console.log(`[${new Date().toISOString()}] Benchmark complete.`);
-        if (cb) cb(code);
-    });
+// Route → file mapping
+const PAGES = {
+    roaring: path.join(__dirname, 'pages/roaring.html'),
+    woco: path.join(__dirname, 'pages/woco.html'),
+};
+
+function indexHtml() {
+    const links = Object.keys(PAGES)
+        .map(name => `  <li><a href="/${name}">/${name}</a></li>`)
+        .join('\n');
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>pages</title></head><body><ul>\n${links}\n</ul></body></html>`;
 }
 
 const server = http.createServer((req, res) => {
@@ -27,13 +25,9 @@ const server = http.createServer((req, res) => {
         res.end('OK');
         return;
     }
+
     if (req.url === '/') {
-        if (!fs.existsSync(RESULTS)) {
-            res.writeHead(503);
-            res.end('Benchmark has not run yet — check back shortly.');
-            return;
-        }
-        const html = fs.readFileSync(RESULTS, 'utf8');
+        const html = indexHtml();
         res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
             'Content-Length': Buffer.byteLength(html, 'utf8'),
@@ -41,10 +35,28 @@ const server = http.createServer((req, res) => {
         res.end(html, 'utf8');
         return;
     }
+
+    const name = req.url.slice(1);
+    const filePath = PAGES[name];
+    if (filePath) {
+        if (!fs.existsSync(filePath)) {
+            res.writeHead(503);
+            res.end(`/${name} not ready yet — check back shortly.`);
+            return;
+        }
+        const html = fs.readFileSync(filePath, 'utf8');
+        res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Length': Buffer.byteLength(html, 'utf8'),
+        });
+        res.end(html, 'utf8');
+        return;
+    }
+
     res.writeHead(404);
     res.end('Not found');
 });
 
 server.listen(PORT, () => {
-    console.log(`lollingbitmap running at http://localhost:${PORT}`);
+    console.log(`pages running at http://localhost:${PORT}`);
 });

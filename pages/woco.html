@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BetrVG - Works Constitution Act - Section Graph</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e0e0e0; overflow: hidden; }
+
+#canvas-container { position: relative; width: 100vw; height: 100vh; overflow: hidden; cursor: grab; }
+#canvas-container.grabbing { cursor: grabbing; }
+
+svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+svg line { pointer-events: stroke; cursor: pointer; }
+svg line:hover { stroke-width: 3 !important; }
+
+.node {
+  position: absolute;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: grab;
+  user-select: none;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  min-width: 80px;
+  max-width: 180px;
+  text-align: center;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  z-index: 1;
+}
+.node:hover { z-index: 100; border-color: rgba(255,255,255,0.5); box-shadow: 0 0 16px rgba(255,255,255,0.15); }
+.node.dragging { cursor: grabbing; z-index: 200; box-shadow: 0 0 24px rgba(255,255,255,0.25); }
+.node.highlighted { border-color: #fff !important; box-shadow: 0 0 20px rgba(255,255,255,0.3); z-index: 150; }
+.node.dimmed { opacity: 0.15; }
+
+.node .sec-num { font-weight: 700; font-size: 12px; }
+.node .sec-title { font-size: 9px; opacity: 0.8; margin-top: 2px; line-height: 1.2; }
+
+.edge-label {
+  position: absolute;
+  background: rgba(30,30,40,0.95);
+  color: #ccc;
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 300;
+  max-width: 220px;
+  line-height: 1.3;
+  border: 1px solid rgba(255,255,255,0.2);
+  display: none;
+  white-space: nowrap;
+}
+
+#info-panel {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  background: rgba(20,22,30,0.95);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 16px;
+  width: 280px;
+  max-height: 80vh;
+  overflow-y: auto;
+  z-index: 500;
+  font-size: 12px;
+  backdrop-filter: blur(10px);
+}
+#info-panel h2 { font-size: 15px; margin-bottom: 4px; }
+#info-panel .part-label { font-size: 10px; opacity: 0.6; margin-bottom: 8px; }
+#info-panel .refs { margin-top: 10px; }
+#info-panel .ref-item { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer; }
+#info-panel .ref-item:hover { color: #7cb3ff; }
+#info-panel .ref-dir { font-size: 9px; opacity: 0.5; text-transform: uppercase; margin-top: 8px; margin-bottom: 2px; letter-spacing: 1px; }
+
+#controls {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+#controls h1 { font-size: 16px; margin-bottom: 4px; }
+#controls .subtitle { font-size: 10px; opacity: 0.5; margin-bottom: 8px; }
+
+#search {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #e0e0e0;
+  font-size: 12px;
+  width: 220px;
+  outline: none;
+}
+#search:focus { border-color: rgba(255,255,255,0.4); }
+#search::placeholder { color: rgba(255,255,255,0.3); }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.legend-item {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.legend-item:hover { opacity: 1; }
+.legend-item.active { opacity: 1; border: 1px solid rgba(255,255,255,0.5); }
+
+.zoom-controls { display: flex; gap: 4px; margin-top: 6px; }
+.zoom-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  color: #e0e0e0;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.zoom-btn:hover { background: rgba(255,255,255,0.15); }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <h1>BetrVG Graph</h1>
+  <div class="subtitle">Works Constitution Act &mdash; Cross-Reference Map</div>
+  <input type="text" id="search" placeholder="Search sections...">
+  <div class="legend" id="legend"></div>
+  <div class="zoom-controls">
+    <button class="zoom-btn" onclick="zoomIn()">+</button>
+    <button class="zoom-btn" onclick="zoomOut()">&minus;</button>
+    <button class="zoom-btn" onclick="resetView()">Reset</button>
+    <button class="zoom-btn" id="hide-orphans-btn" onclick="toggleOrphans()">Hide orphans</button>
+  </div>
+</div>
+
+<div id="info-panel" style="display:none">
+  <h2 id="info-title"></h2>
+  <div class="part-label" id="info-part"></div>
+  <div id="info-body"></div>
+  <div class="refs" id="info-refs"></div>
+</div>
+
+<div id="canvas-container">
+  <svg id="edges-svg"></svg>
+  <div id="edge-label" class="edge-label"></div>
+</div>
+
+<script>
+const sections = {"1":{"title":"Establishment of works councils","part":"Part 1: General Provisions","div":""},"2":{"title":"Status of trade unions and employers' associations","part":"Part 1: General Provisions","div":""},"3":{"title":"Different arrangements","part":"Part 1: General Provisions","div":""},"4":{"title":"Separate departments, very small establishments","part":"Part 1: General Provisions","div":""},"5":{"title":"Employees","part":"Part 1: General Provisions","div":""},"7":{"title":"Voting rights","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"8":{"title":"Eligibility","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"9":{"title":"Number of members","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"11":{"title":"Reduction in members","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"13":{"title":"Time of elections","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"14":{"title":"Election rules","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"14a":{"title":"Simplified electoral procedure","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"15":{"title":"Representation of categories & gender","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"16":{"title":"Appointment of electoral board","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"17":{"title":"Electoral board (no works council)","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"17a":{"title":"Electoral board (simplified)","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"18":{"title":"Preparation & conduct of election","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"18a":{"title":"Allocation of executive staff","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"19":{"title":"Contesting of elections","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"20":{"title":"Protection & costs of election","part":"Part 2: Works Council","div":"Div 1: Composition & Election"},"21":{"title":"Term of office","part":"Part 2: Works Council","div":"Div 2: Term of Office"},"21a":{"title":"Transitional mandate","part":"Part 2: Works Council","div":"Div 2: Term of Office"},"21b":{"title":"Residual mandate","part":"Part 2: Works Council","div":"Div 2: Term of Office"},"22":{"title":"Continuation in office","part":"Part 2: Works Council","div":"Div 2: Term of Office"},"23":{"title":"Violation of statutory duties","part":"Part 2: Works Council","div":"Div 2: Term of Office"},"24":{"title":"Termination of membership","part":"Part 2: Works Council","div":"Div 2: Term of Office"},"25":{"title":"Substitutes","part":"Part 2: Works Council","div":"Div 2: Term of Office"},"26":{"title":"Chairperson","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"27":{"title":"Works committee","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"28":{"title":"Assignment of tasks to committees","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"28a":{"title":"Tasks to working groups","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"29":{"title":"Convening of meetings","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"30":{"title":"Meetings of the works council","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"31":{"title":"Trade union delegates","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"32":{"title":"Disabled persons' delegation","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"33":{"title":"Decisions of the works council","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"34":{"title":"Minutes","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"35":{"title":"Deferment of decisions","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"36":{"title":"Standing orders","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"37":{"title":"Honorary nature; loss of working time","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"38":{"title":"Releases","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"39":{"title":"Consultation hours","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"40":{"title":"Expenses & material facilities","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"41":{"title":"Prohibition of contributions","part":"Part 2: Works Council","div":"Div 3: Conduct of Business"},"42":{"title":"Composition & meetings","part":"Part 2: Works Council","div":"Div 4: Works Meeting"},"43":{"title":"Ordinary works meetings","part":"Part 2: Works Council","div":"Div 4: Works Meeting"},"44":{"title":"Time of meetings & remuneration","part":"Part 2: Works Council","div":"Div 4: Works Meeting"},"45":{"title":"Subjects at works meetings","part":"Part 2: Works Council","div":"Div 4: Works Meeting"},"46":{"title":"Delegates from associations","part":"Part 2: Works Council","div":"Div 4: Works Meeting"},"47":{"title":"Central WC: establishment & members","part":"Part 2: Works Council","div":"Div 5: Central Works Council"},"48":{"title":"Central WC: removal from office","part":"Part 2: Works Council","div":"Div 5: Central Works Council"},"49":{"title":"Central WC: termination","part":"Part 2: Works Council","div":"Div 5: Central Works Council"},"50":{"title":"Central WC: competency","part":"Part 2: Works Council","div":"Div 5: Central Works Council"},"51":{"title":"Central WC: conduct of business","part":"Part 2: Works Council","div":"Div 5: Central Works Council"},"52":{"title":"Central disabled persons' delegation","part":"Part 2: Works Council","div":"Div 5: Central Works Council"},"53":{"title":"Meeting of works councils","part":"Part 2: Works Council","div":"Div 5: Central Works Council"},"54":{"title":"Combine WC: establishment","part":"Part 2: Works Council","div":"Div 6: Combine Works Council"},"55":{"title":"Combine WC: composition & votes","part":"Part 2: Works Council","div":"Div 6: Combine Works Council"},"56":{"title":"Combine WC: removal from office","part":"Part 2: Works Council","div":"Div 6: Combine Works Council"},"57":{"title":"Combine WC: termination","part":"Part 2: Works Council","div":"Div 6: Combine Works Council"},"58":{"title":"Combine WC: competency","part":"Part 2: Works Council","div":"Div 6: Combine Works Council"},"59":{"title":"Combine WC: conduct of business","part":"Part 2: Works Council","div":"Div 6: Combine Works Council"},"59a":{"title":"Combine disabled persons' delegation","part":"Part 2: Works Council","div":"Div 6: Combine Works Council"},"60":{"title":"Youth delegation: establishment","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"61":{"title":"Youth delegation: voting & eligibility","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"62":{"title":"Youth delegation: number of members","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"63":{"title":"Youth delegation: election rules","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"64":{"title":"Youth delegation: elections & term","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"65":{"title":"Youth delegation: conduct of business","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"66":{"title":"Deferment of WC decisions","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"67":{"title":"Participation in WC meetings","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"68":{"title":"Participation in joint discussions","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"69":{"title":"Consultation hours (youth)","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"70":{"title":"General duties (youth)","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"71":{"title":"Youth works meetings","part":"Part 3: Youth & Trainee","div":"Div 1: Establishment Level"},"72":{"title":"Central youth delegation","part":"Part 3: Youth & Trainee","div":"Div 2: Central Level"},"73":{"title":"Central youth: business & provisions","part":"Part 3: Youth & Trainee","div":"Div 2: Central Level"},"73a":{"title":"Combine youth delegation","part":"Part 3: Youth & Trainee","div":"Div 3: Combine Level"},"73b":{"title":"Combine youth: business & provisions","part":"Part 3: Youth & Trainee","div":"Div 3: Combine Level"},"74":{"title":"Principles of collaboration","part":"Part 4: Co-determination","div":"Div 1: General"},"75":{"title":"Treatment of persons in establishment","part":"Part 4: Co-determination","div":"Div 1: General"},"76":{"title":"Conciliation committee","part":"Part 4: Co-determination","div":"Div 1: General"},"76a":{"title":"Costs of conciliation committee","part":"Part 4: Co-determination","div":"Div 1: General"},"77":{"title":"Works agreements","part":"Part 4: Co-determination","div":"Div 1: General"},"78":{"title":"Protective provisions","part":"Part 4: Co-determination","div":"Div 1: General"},"78a":{"title":"Protection of trainees","part":"Part 4: Co-determination","div":"Div 1: General"},"79":{"title":"Secrecy","part":"Part 4: Co-determination","div":"Div 1: General"},"79a":{"title":"Data protection","part":"Part 4: Co-determination","div":"Div 1: General"},"80":{"title":"General duties","part":"Part 4: Co-determination","div":"Div 1: General"},"81":{"title":"Employer's obligation to inform","part":"Part 4: Co-determination","div":"Div 2: Employee Rights"},"82":{"title":"Right to be heard","part":"Part 4: Co-determination","div":"Div 2: Employee Rights"},"83":{"title":"Access to personal files","part":"Part 4: Co-determination","div":"Div 2: Employee Rights"},"84":{"title":"Right to make complaints","part":"Part 4: Co-determination","div":"Div 2: Employee Rights"},"85":{"title":"WC role in grievances","part":"Part 4: Co-determination","div":"Div 2: Employee Rights"},"86":{"title":"Supplementary agreements","part":"Part 4: Co-determination","div":"Div 2: Employee Rights"},"86a":{"title":"Employee right of proposal","part":"Part 4: Co-determination","div":"Div 2: Employee Rights"},"87":{"title":"Co-determination rights","part":"Part 4: Co-determination","div":"Div 3: Social Matters"},"88":{"title":"Voluntary works agreements","part":"Part 4: Co-determination","div":"Div 3: Social Matters"},"89":{"title":"Health and safety","part":"Part 4: Co-determination","div":"Div 3: Social Matters"},"90":{"title":"Information & consultation rights","part":"Part 4: Co-determination","div":"Div 4: Jobs & Environment"},"91":{"title":"Right of co-determination (jobs)","part":"Part 4: Co-determination","div":"Div 4: Jobs & Environment"},"92":{"title":"Manpower planning","part":"Part 4: Co-determination","div":"Div 5: Staff Policy"},"92a":{"title":"Securing employment","part":"Part 4: Co-determination","div":"Div 5: Staff Policy"},"93":{"title":"Notification of vacancies","part":"Part 4: Co-determination","div":"Div 5: Staff Policy"},"94":{"title":"Personnel questionnaires","part":"Part 4: Co-determination","div":"Div 5: Staff Policy"},"95":{"title":"Guidelines for selection","part":"Part 4: Co-determination","div":"Div 5: Staff Policy"},"96":{"title":"Promotion of vocational training","part":"Part 4: Co-determination","div":"Div 5: Vocational Training"},"97":{"title":"Training facilities & programmes","part":"Part 4: Co-determination","div":"Div 5: Vocational Training"},"98":{"title":"Training in establishment","part":"Part 4: Co-determination","div":"Div 5: Vocational Training"},"99":{"title":"Co-determination: staff measures","part":"Part 4: Co-determination","div":"Div 5: Individual Staff"},"100":{"title":"Temporary staff measures","part":"Part 4: Co-determination","div":"Div 5: Individual Staff"},"101":{"title":"Fines (staff measures)","part":"Part 4: Co-determination","div":"Div 5: Individual Staff"},"102":{"title":"Co-determination: dismissal","part":"Part 4: Co-determination","div":"Div 5: Individual Staff"},"103":{"title":"Exceptional dismissal & transfer","part":"Part 4: Co-determination","div":"Div 5: Individual Staff"},"104":{"title":"Removal of troublesome employees","part":"Part 4: Co-determination","div":"Div 5: Individual Staff"},"105":{"title":"Executive staff","part":"Part 4: Co-determination","div":"Div 5: Individual Staff"},"106":{"title":"Finance committee","part":"Part 4: Co-determination","div":"Div 6: Financial Matters"},"107":{"title":"Appointment of finance committee","part":"Part 4: Co-determination","div":"Div 6: Financial Matters"},"108":{"title":"Meetings (finance committee)","part":"Part 4: Co-determination","div":"Div 6: Financial Matters"},"109":{"title":"Settlement of differences","part":"Part 4: Co-determination","div":"Div 6: Financial Matters"},"109a":{"title":"Takeover","part":"Part 4: Co-determination","div":"Div 6: Financial Matters"},"110":{"title":"Information of employees","part":"Part 4: Co-determination","div":"Div 6: Financial Matters"},"111":{"title":"Alterations","part":"Part 4: Co-determination","div":"Div 6: Alterations"},"112":{"title":"Social compensation plan","part":"Part 4: Co-determination","div":"Div 6: Alterations"},"112a":{"title":"Enforceable social plan (cutbacks)","part":"Part 4: Co-determination","div":"Div 6: Alterations"},"113":{"title":"Indemnities","part":"Part 4: Co-determination","div":"Div 6: Alterations"},"114":{"title":"Maritime: basic principles","part":"Part 5: Special Regulations","div":"Div 1: Maritime Shipping"},"115":{"title":"Ship's committee","part":"Part 5: Special Regulations","div":"Div 1: Maritime Shipping"},"116":{"title":"Fleet works council","part":"Part 5: Special Regulations","div":"Div 1: Maritime Shipping"},"117":{"title":"Application to aviation","part":"Part 5: Special Regulations","div":"Div 2: Aviation"},"118":{"title":"Ideological establishments","part":"Part 5: Special Regulations","div":"Div 3: Special Purpose"},"119":{"title":"Offences against WC bodies","part":"Part 6: Offences","div":""},"120":{"title":"Breach of secrecy","part":"Part 6: Offences","div":""},"121":{"title":"Administrative fines","part":"Part 6: Offences","div":""},"125":{"title":"First elections under this Act","part":"Part 8: Transitional & Final","div":""},"126":{"title":"Rules for elections","part":"Part 8: Transitional & Final","div":""},"127":{"title":"References in other enactments","part":"Part 8: Transitional & Final","div":""},"128":{"title":"Collective agreements contrary to Act","part":"Part 8: Transitional & Final","div":""},"129":{"title":"COVID-19 special provisions","part":"Part 8: Transitional & Final","div":""},"130":{"title":"Civil service exclusion","part":"Part 8: Transitional & Final","div":""},"131":{"title":"Applicability in Berlin","part":"Part 8: Transitional & Final","div":""}};
+
+const edges = [
+  ["3","14a","Allows different electoral procedure"],
+  ["3","15","Modifies representation rules"],
+  ["3","4","Cross-refs separate departments"],
+  ["4","1","Conditions from establishment rule"],
+  ["4","3","Resolution procedures apply"],
+  ["5","18","Remuneration threshold reference"],
+  ["8","18","Combine defined via Joint Stock Act"],
+  ["8","13","Election timing for eligibility"],
+  ["8","16","Electoral board provisions"],
+  ["8","17","Board where no WC exists"],
+  ["8","21","Term of office conditions"],
+  ["8","26","Chairperson election applies"],
+  ["8","39","Consultation hours apply"],
+  ["9","21","Term provisions referenced"],
+  ["13","5","Executives' Committee Act timing"],
+  ["14","14a","Simplified procedure alternative"],
+  ["14","16","Electoral board appointment"],
+  ["14","18","Election conduct provisions"],
+  ["14","19","Contesting applies"],
+  ["14a","17a","Electoral board for simplified"],
+  ["14a","14","Standard rules apply with mods"],
+  ["14a","16","Board appointment modified"],
+  ["14a","60","Youth employee threshold"],
+  ["16","17","Board where no WC exists"],
+  ["16","19","Contesting provisions"],
+  ["16","26","Chairperson provisions"],
+  ["16","33","Decision rules apply"],
+  ["17","1","Establishment conditions"],
+  ["17a","14a","Simplified procedure trigger"],
+  ["17a","16","Modifies board appointment"],
+  ["18a","13","Election timing sync"],
+  ["18a","5","Executive staff definition"],
+  ["20","18a","Mediator cost provisions"],
+  ["21","13","Regular election timing"],
+  ["21a","1","Establishment conditions"],
+  ["22","13","Early election conditions"],
+  ["24","19","Contesting time limit"],
+  ["25","15","Representation list order"],
+  ["25","26","Chairperson substitute rules"],
+  ["25","28","Committee task assignment"],
+  ["25","30","Meeting provisions apply"],
+  ["25","40","Expenses apply"],
+  ["25","66","Deferment provisions"],
+  ["25","56","Combine WC removal applies"],
+  ["27","37","Working time provisions"],
+  ["29","26","Chairperson election timing"],
+  ["39","60","Youth employee consultation"],
+  ["40","42","Works meeting composition"],
+  ["40","47","Central WC establishment"],
+  ["40","74","Collaboration principles"],
+  ["43","42","Department meeting rules"],
+  ["43","44","Meeting time provisions"],
+  ["43","65","Youth conduct of business"],
+  ["44","14a","Simplified election meetings"],
+  ["45","74","Collaboration principles apply"],
+  ["51","25","Substitute provisions apply"],
+  ["51","28","Committee assignment applies"],
+  ["51","30","Meeting rules apply"],
+  ["51","40","Expenses provisions apply"],
+  ["53","42","Works meeting rules apply"],
+  ["53","43","Meeting procedures apply"],
+  ["53","45","Subject rules apply"],
+  ["54","18","Joint Stock Act definition"],
+  ["59","25","Substitute provisions apply"],
+  ["59","28","Committee provisions apply"],
+  ["59","30","Meeting rules apply"],
+  ["59","40","Expenses provisions apply"],
+  ["61","60","Youth establishment definition"],
+  ["61","8","Eligibility rules apply"],
+  ["62","60","Youth employee threshold"],
+  ["64","13","Election timing applies"],
+  ["65","23","Duty violation rules apply"],
+  ["65","30","Meeting rules apply"],
+  ["65","34","Minutes rules apply"],
+  ["65","29","Meeting convening applies"],
+  ["66","60","Youth employee interests"],
+  ["67","60","Youth employee concerns"],
+  ["68","60","Youth employee matters"],
+  ["69","60","Youth threshold for hours"],
+  ["70","60","Youth employee benefit"],
+  ["70","80","General duties referenced"],
+  ["72","60","Youth employee vote weight"],
+  ["73a","18","Joint Stock Act combine def"],
+  ["73a","60","Youth employee threshold"],
+  ["76a","37","Working time/compensation rules"],
+  ["78","3","Employee rep bodies defined"],
+  ["78","76","Conciliation committee protected"],
+  ["78","86","Grievance committee protected"],
+  ["78","80","Information personnel protected"],
+  ["79","76","Conciliation secrecy applies"],
+  ["79","86","Grievance committee secrecy"],
+  ["79","3","Rep bodies secrecy applies"],
+  ["80","60","Youth delegation involvement"],
+  ["80","28","Committee payroll inspection"],
+  ["80","79","Secrecy obligations"],
+  ["85","84","Grievance procedure reference"],
+  ["86","85","Replaces conciliation in grievances"],
+  ["89","22","Safety delegate cooperation"],
+  ["92","80","General duties for planning"],
+  ["99","79","Confidentiality of staff info"],
+  ["99","95","Selection guideline violation"],
+  ["99","93","Vacancy notification required"],
+  ["99","75","Treatment principles violated"],
+  ["100","99","Staff measure definition"],
+  ["101","99","Fine for unauthorized measures"],
+  ["101","100","Temp measure violation"],
+  ["104","75","Treatment principles violated"],
+  ["105","5","Executive staff defined"],
+  ["107","5","Executive eligibility"],
+  ["107","79","Secrecy obligation"],
+  ["108","5","Executive staff attendance"],
+  ["108","80","Expert secrecy provisions"],
+  ["108","106","Document access rights"],
+  ["109","106","Financial info obligation"],
+  ["109","80","Expert evidence provisions"],
+  ["109a","106","Involvement per finance rules"],
+  ["109a","109","Settlement applies accordingly"],
+  ["110","107","Finance committee bodies"],
+  ["111","80","Consultant support provisions"],
+  ["112","77","Works agreement form required"],
+  ["112a","111","Alteration trigger condition"],
+  ["112a","112","Social plan enforcement"],
+  ["113","111","Alteration indemnity trigger"],
+  ["114","5","Executive staff definition"],
+  ["115","42","Meeting provisions apply"],
+  ["115","47","Central WC provisions apply"],
+  ["115","74","Collaboration principles apply"],
+  ["116","8","Eligibility rules apply"],
+  ["116","115","Ship's committee rules"],
+  ["116","14","Election rules apply"],
+  ["118","5","Basic Law expression provision"],
+  ["118","106","Finance committee excluded"],
+  ["118","111","Alterations limited application"],
+  ["119","3","Rep body election obstruction"],
+  ["119","76","Conciliation committee offence"],
+  ["119","86","Grievance committee offence"],
+  ["119","80","Info personnel prejudice"],
+  ["120","79","Secrecy breach by WC member"],
+  ["120","80","Expert secrecy breach"],
+  ["120","109","Conciliation expert breach"],
+  ["120","111","Consultant secrecy breach"],
+  ["120","107","Finance committee expert breach"],
+  ["120","108","Finance meeting expert breach"],
+  ["120","77","Criminal code reference"],
+  ["121","90","Information obligation fine"],
+  ["121","92","Manpower planning fine"],
+  ["121","99","Staff measure fine"],
+  ["121","106","Finance info fine"],
+  ["121","108","Finance meeting fine"],
+  ["121","110","Employee info fine"],
+  ["125","13","First election timing"],
+  ["125","64","Youth election timing"],
+  ["125","14a","Simplified procedure rules"],
+  ["126","7","Election procedure scope"],
+  ["126","15","Gender seat allocation"],
+  ["126","62","Youth delegation seats"],
+  ["128","20","Prior collective agreements"],
+  ["129","42","COVID audiovisual meetings"]
+];
+
+// Color scheme per part
+const partColors = {
+  "Part 1: General Provisions": "#4a90d9",
+  "Part 2: Works Council": "#50b87a",
+  "Part 3: Youth & Trainee": "#e6a23c",
+  "Part 4: Co-determination": "#e06060",
+  "Part 5: Special Regulations": "#9b6bd9",
+  "Part 6: Offences": "#d94a7a",
+  "Part 8: Transitional & Final": "#6bb8d9"
+};
+
+const container = document.getElementById('canvas-container');
+const svg = document.getElementById('edges-svg');
+const edgeLabel = document.getElementById('edge-label');
+const infoPanel = document.getElementById('info-panel');
+const searchInput = document.getElementById('search');
+
+// State
+let pan = { x: 0, y: 0 };
+let zoom = 1;
+let isPanning = false;
+let panStart = { x: 0, y: 0 };
+let draggingNode = null;
+let dragOffset = { x: 0, y: 0 };
+let nodePositions = {};
+let nodeElements = {};
+let selectedNode = null;
+
+// Build adjacency
+const outgoing = {};
+const incoming = {};
+const sectionKeys = Object.keys(sections);
+sectionKeys.forEach(k => { outgoing[k] = []; incoming[k] = []; });
+edges.forEach(([src, tgt, reason]) => {
+  if (outgoing[src]) outgoing[src].push({ target: tgt, reason });
+  if (incoming[tgt]) incoming[tgt].push({ source: src, reason });
+});
+
+// Layout: group by part, arrange in clusters
+function initialLayout() {
+  const partGroups = {};
+  sectionKeys.forEach(k => {
+    const p = sections[k].part;
+    if (!partGroups[p]) partGroups[p] = [];
+    partGroups[p].push(k);
+  });
+
+  const partOrder = Object.keys(partColors);
+  const totalWidth = 5000;
+  const totalHeight = 3200;
+
+  // Arrange parts in a grid-like layout
+  const partLayouts = [
+    { part: "Part 1: General Provisions", cx: 500, cy: 250, spread: 220 },
+    { part: "Part 2: Works Council", cx: 1800, cy: 1000, spread: 200 },
+    { part: "Part 3: Youth & Trainee", cx: 4500, cy: 800, spread: 210 },
+    { part: "Part 4: Co-determination", cx: 2800, cy: 3200, spread: 190 },
+    { part: "Part 5: Special Regulations", cx: 5600, cy: 2600, spread: 220 },
+    { part: "Part 6: Offences", cx: 5800, cy: 500, spread: 200 },
+    { part: "Part 8: Transitional & Final", cx: 6200, cy: 1600, spread: 210 },
+  ];
+
+  partLayouts.forEach(({ part, cx, cy, spread }) => {
+    const members = partGroups[part] || [];
+    const cols = Math.ceil(Math.sqrt(members.length * 1.5));
+    members.forEach((k, i) => {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      nodePositions[k] = {
+        x: cx + (col - cols/2) * spread + (Math.random() - 0.5) * 30,
+        y: cy + row * 110 + (Math.random() - 0.5) * 20
+      };
+    });
+  });
+}
+
+function createNodes() {
+  sectionKeys.forEach(k => {
+    const sec = sections[k];
+    const node = document.createElement('div');
+    node.className = 'node';
+    node.dataset.id = k;
+    const color = partColors[sec.part] || '#888';
+    node.style.background = color + '22';
+    node.style.borderColor = color + '66';
+    node.innerHTML = `<div class="sec-num" style="color:${color}">&sect;${k}</div><div class="sec-title">${sec.title}</div>`;
+
+    node.addEventListener('mousedown', onNodeMouseDown);
+    node.addEventListener('click', (e) => { if (!node._dragged) selectNode(k); });
+
+    container.appendChild(node);
+    nodeElements[k] = node;
+  });
+}
+
+function updateNodePositions() {
+  sectionKeys.forEach(k => {
+    const el = nodeElements[k];
+    const pos = nodePositions[k];
+    const sx = pos.x * zoom + pan.x;
+    const sy = pos.y * zoom + pan.y;
+    el.style.transform = `translate(${sx}px, ${sy}px) scale(${zoom})`;
+    el.style.transformOrigin = '0 0';
+  });
+}
+
+function drawEdges() {
+  // Clear
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // Defs for markers
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+  marker.setAttribute('id', 'arrow');
+  marker.setAttribute('viewBox', '0 0 10 10');
+  marker.setAttribute('refX', '10');
+  marker.setAttribute('refY', '5');
+  marker.setAttribute('markerWidth', '6');
+  marker.setAttribute('markerHeight', '6');
+  marker.setAttribute('orient', 'auto-start-reverse');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+  path.setAttribute('fill', 'rgba(255,255,255,0.3)');
+  marker.appendChild(path);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  edges.forEach(([src, tgt, reason], idx) => {
+    if (!nodePositions[src] || !nodePositions[tgt]) return;
+    const srcEl = nodeElements[src];
+    const tgtEl = nodeElements[tgt];
+    if (!srcEl || !tgtEl) return;
+
+    const sx = nodePositions[src].x * zoom + pan.x + (srcEl.offsetWidth * zoom) / 2;
+    const sy = nodePositions[src].y * zoom + pan.y + (srcEl.offsetHeight * zoom) / 2;
+    const tx = nodePositions[tgt].x * zoom + pan.x + (tgtEl.offsetWidth * zoom) / 2;
+    const ty = nodePositions[tgt].y * zoom + pan.y + (tgtEl.offsetHeight * zoom) / 2;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', sx);
+    line.setAttribute('y1', sy);
+    line.setAttribute('x2', tx);
+    line.setAttribute('y2', ty);
+
+    const isHighlighted = selectedNode && (src === selectedNode || tgt === selectedNode);
+    line.setAttribute('stroke', isHighlighted ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.08)');
+    line.setAttribute('stroke-width', isHighlighted ? '2' : '1');
+    line.setAttribute('marker-end', 'url(#arrow)');
+    line.dataset.src = src;
+    line.dataset.tgt = tgt;
+    line.dataset.reason = reason;
+    line.dataset.idx = idx;
+
+    line.addEventListener('mouseenter', (e) => {
+      edgeLabel.textContent = `${src} -> ${tgt}: ${reason}`;
+      edgeLabel.style.display = 'block';
+      edgeLabel.style.left = e.clientX + 10 + 'px';
+      edgeLabel.style.top = e.clientY - 20 + 'px';
+    });
+    line.addEventListener('mousemove', (e) => {
+      edgeLabel.style.left = e.clientX + 10 + 'px';
+      edgeLabel.style.top = e.clientY - 20 + 'px';
+    });
+    line.addEventListener('mouseleave', () => {
+      edgeLabel.style.display = 'none';
+    });
+
+    svg.appendChild(line);
+  });
+}
+
+function render() {
+  updateNodePositions();
+  drawEdges();
+}
+
+// Node dragging
+function onNodeMouseDown(e) {
+  e.stopPropagation();
+  const node = e.currentTarget;
+  const id = node.dataset.id;
+  draggingNode = id;
+  node._dragged = false;
+  const pos = nodePositions[id];
+  dragOffset.x = e.clientX - (pos.x * zoom + pan.x);
+  dragOffset.y = e.clientY - (pos.y * zoom + pan.y);
+  node.classList.add('dragging');
+}
+
+document.addEventListener('mousemove', (e) => {
+  if (draggingNode) {
+    const node = nodeElements[draggingNode];
+    node._dragged = true;
+    nodePositions[draggingNode].x = (e.clientX - dragOffset.x - pan.x) / zoom;
+    nodePositions[draggingNode].y = (e.clientY - dragOffset.y - pan.y) / zoom;
+    render();
+  } else if (isPanning) {
+    pan.x += e.clientX - panStart.x;
+    pan.y += e.clientY - panStart.y;
+    panStart.x = e.clientX;
+    panStart.y = e.clientY;
+    render();
+  }
+});
+
+document.addEventListener('mouseup', () => {
+  if (draggingNode) {
+    nodeElements[draggingNode].classList.remove('dragging');
+    draggingNode = null;
+  }
+  isPanning = false;
+  container.classList.remove('grabbing');
+});
+
+// Pan
+container.addEventListener('mousedown', (e) => {
+  if (e.target === container || e.target === svg) {
+    isPanning = true;
+    panStart.x = e.clientX;
+    panStart.y = e.clientY;
+    container.classList.add('grabbing');
+  }
+});
+
+// Zoom (wheel + trackpad pinch)
+function applyZoom(centerX, centerY, delta) {
+  const oldZoom = zoom;
+  zoom *= delta;
+  zoom = Math.max(0.1, Math.min(3, zoom));
+  const rect = container.getBoundingClientRect();
+  const mx = centerX - rect.left;
+  const my = centerY - rect.top;
+  pan.x = mx - (mx - pan.x) * (zoom / oldZoom);
+  pan.y = my - (my - pan.y) * (zoom / oldZoom);
+  render();
+}
+
+container.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  // ctrlKey is set for trackpad pinch on macOS/Chrome
+  if (e.ctrlKey) {
+    applyZoom(e.clientX, e.clientY, 1 - e.deltaY * 0.01);
+  } else {
+    applyZoom(e.clientX, e.clientY, 1 - e.deltaY * 0.001);
+  }
+}, { passive: false });
+
+// Safari gesture events (pinch on trackpad)
+container.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+container.addEventListener('gesturechange', (e) => {
+  e.preventDefault();
+  applyZoom(e.clientX, e.clientY, e.scale > 1 ? 1.03 : 0.97);
+}, { passive: false });
+container.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+
+// Touch pinch (mobile/tablet)
+let lastTouchDist = 0;
+let lastTouchCenter = { x: 0, y: 0 };
+let touchPanning = false;
+let lastTouchPos = { x: 0, y: 0 };
+
+container.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDist = Math.hypot(dx, dy);
+    lastTouchCenter = {
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+    };
+  } else if (e.touches.length === 1) {
+    touchPanning = true;
+    lastTouchPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+}, { passive: false });
+
+container.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    const center = {
+      x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+      y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+    };
+    if (lastTouchDist > 0) {
+      applyZoom(center.x, center.y, dist / lastTouchDist);
+    }
+    // Also pan with two fingers
+    pan.x += center.x - lastTouchCenter.x;
+    pan.y += center.y - lastTouchCenter.y;
+    lastTouchDist = dist;
+    lastTouchCenter = center;
+    render();
+  } else if (e.touches.length === 1 && touchPanning) {
+    pan.x += e.touches[0].clientX - lastTouchPos.x;
+    pan.y += e.touches[0].clientY - lastTouchPos.y;
+    lastTouchPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    render();
+  }
+}, { passive: false });
+
+container.addEventListener('touchend', () => {
+  lastTouchDist = 0;
+  touchPanning = false;
+});
+
+function zoomIn() { zoom = Math.min(3, zoom * 1.3); render(); }
+function zoomOut() { zoom = Math.max(0.1, zoom / 1.3); render(); }
+function resetView() { zoom = 0.35; pan = { x: 50, y: 50 }; render(); }
+
+// Orphan filter
+let orphansHidden = false;
+const orphanNodes = new Set(sectionKeys.filter(k => !outgoing[k]?.length && !incoming[k]?.length));
+
+function toggleOrphans() {
+  orphansHidden = !orphansHidden;
+  document.getElementById('hide-orphans-btn').textContent = orphansHidden ? 'Show orphans' : 'Hide orphans';
+  orphanNodes.forEach(k => {
+    nodeElements[k].style.display = orphansHidden ? 'none' : '';
+  });
+  render();
+}
+
+// Select node
+function selectNode(id) {
+  selectedNode = id;
+  const sec = sections[id];
+
+  // Highlight connected
+  const connected = new Set([id]);
+  outgoing[id]?.forEach(e => connected.add(e.target));
+  incoming[id]?.forEach(e => connected.add(e.source));
+
+  sectionKeys.forEach(k => {
+    nodeElements[k].classList.toggle('highlighted', connected.has(k) && k !== id);
+    nodeElements[k].classList.toggle('dimmed', !connected.has(k));
+  });
+  nodeElements[id].classList.remove('dimmed');
+  nodeElements[id].classList.add('highlighted');
+
+  // Info panel
+  infoPanel.style.display = 'block';
+  document.getElementById('info-title').textContent = `\u00A7${id} ${sec.title}`;
+  document.getElementById('info-part').textContent = sec.part + (sec.div ? ' / ' + sec.div : '');
+
+  let refsHTML = '';
+  if (outgoing[id]?.length) {
+    refsHTML += '<div class="ref-dir">References to:</div>';
+    outgoing[id].forEach(e => {
+      refsHTML += `<div class="ref-item" onclick="focusNode('${e.target}')">\u00A7${e.target} ${sections[e.target]?.title || ''}<br><small style="opacity:0.5">${e.reason}</small></div>`;
+    });
+  }
+  if (incoming[id]?.length) {
+    refsHTML += '<div class="ref-dir">Referenced by:</div>';
+    incoming[id].forEach(e => {
+      refsHTML += `<div class="ref-item" onclick="focusNode('${e.source}')">\u00A7${e.source} ${sections[e.source]?.title || ''}<br><small style="opacity:0.5">${e.reason}</small></div>`;
+    });
+  }
+  if (!outgoing[id]?.length && !incoming[id]?.length) {
+    refsHTML = '<div style="opacity:0.5;margin-top:10px">No cross-references</div>';
+  }
+  document.getElementById('info-refs').innerHTML = refsHTML;
+
+  render();
+}
+
+function focusNode(id) {
+  const pos = nodePositions[id];
+  if (!pos) return;
+  pan.x = window.innerWidth / 2 - pos.x * zoom;
+  pan.y = window.innerHeight / 2 - pos.y * zoom;
+  selectNode(id);
+}
+
+// Click background to deselect
+container.addEventListener('click', (e) => {
+  if (e.target === container || e.target === svg) {
+    selectedNode = null;
+    infoPanel.style.display = 'none';
+    sectionKeys.forEach(k => {
+      nodeElements[k].classList.remove('highlighted', 'dimmed');
+    });
+    render();
+  }
+});
+
+// Search
+searchInput.addEventListener('input', (e) => {
+  const q = e.target.value.toLowerCase();
+  if (!q) {
+    sectionKeys.forEach(k => nodeElements[k].classList.remove('dimmed', 'highlighted'));
+    return;
+  }
+  sectionKeys.forEach(k => {
+    const sec = sections[k];
+    const match = k.includes(q) || sec.title.toLowerCase().includes(q) || sec.part.toLowerCase().includes(q) || (sec.div || '').toLowerCase().includes(q);
+    nodeElements[k].classList.toggle('dimmed', !match);
+    nodeElements[k].classList.toggle('highlighted', match);
+  });
+});
+
+// Legend
+const legendEl = document.getElementById('legend');
+Object.entries(partColors).forEach(([part, color]) => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  item.style.background = color + '33';
+  item.style.color = color;
+  item.textContent = part.replace(/Part \d+: /, '');
+  item.addEventListener('click', () => {
+    searchInput.value = '';
+    const members = sectionKeys.filter(k => sections[k].part === part);
+    const memberSet = new Set(members);
+    sectionKeys.forEach(k => {
+      nodeElements[k].classList.toggle('dimmed', !memberSet.has(k));
+      nodeElements[k].classList.toggle('highlighted', memberSet.has(k));
+    });
+    // Center on group
+    if (members.length) {
+      let cx = 0, cy = 0;
+      members.forEach(k => { cx += nodePositions[k].x; cy += nodePositions[k].y; });
+      cx /= members.length;
+      cy /= members.length;
+      pan.x = window.innerWidth / 2 - cx * zoom;
+      pan.y = window.innerHeight / 2 - cy * zoom;
+      render();
+    }
+  });
+  legendEl.appendChild(item);
+});
+
+// Init
+initialLayout();
+createNodes();
+resetView();
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 {
-  "name": "lollingbitmap",
+  "name": "pages",
   "version": "1.0.0",
-  "description": "RoaringBitmap vs Int32Array vs Set benchmark visualization",
+  "description": "Static pages server",
   "main": "benchmark.js",
   "engines": {
     "node": ">=25.0.0"
